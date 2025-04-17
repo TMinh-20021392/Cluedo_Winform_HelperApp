@@ -1,3 +1,6 @@
+using Cluedo_Winform_HelperApp;
+using System.Windows.Forms;
+
 namespace Cluedo_Winform_HelperApp
 {
     internal static class Program
