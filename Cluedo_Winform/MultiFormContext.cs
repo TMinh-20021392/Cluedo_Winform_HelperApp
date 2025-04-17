@@ -26,7 +26,7 @@ public class MainAppContext : ApplicationContext
         form1.Show();
     }
 
-    private void PositionForm(Form form, int x, int y, int width, int height)
+    private static void PositionForm(Form form, int x, int y, int width, int height)
     {
         form.StartPosition = FormStartPosition.Manual;
         form.Bounds = new Rectangle(x, y, width, height);

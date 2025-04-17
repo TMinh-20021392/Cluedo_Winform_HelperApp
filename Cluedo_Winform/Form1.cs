@@ -15,7 +15,6 @@ namespace Cluedo_Winform_HelperApp
         private List<Player> players;
         private int currentPlayerIndex = 0;
         private int currentRespondingPlayerIndex = 0;
-        private bool inResponseSequence = false;
         private Card? currentSuspect = null;
         private Card? currentWeapon = null;
         private Card? currentRoom = null;
@@ -54,6 +53,7 @@ namespace Cluedo_Winform_HelperApp
             // Subscribe to the events
             suggestionPanel.SuggestionMade += SuggestionPanel_SuggestionMade;
             suggestionPanel.ResponseRecorded += SuggestionPanel_ResponseRecorded;
+            suggestionPanel.InitialCardAssigned += SuggestionPanel_InitialCardAssigned;
 
             // Add the panel to the form
             Controls.Add(suggestionPanel);
@@ -68,6 +68,60 @@ namespace Cluedo_Winform_HelperApp
         private void UpdateSuggestionPanelTitle()
         {
             suggestionPanel?.UpdateTitle($"Player {players[currentPlayerIndex].PlayerNumber}'s Turn");
+        }
+
+        private void ProcessInitialCardAssignment(int playerNumber, Card card)
+        {
+            if (playerNumber < 1 || playerNumber > players.Count)
+            {
+                Debug.WriteLine($"Invalid player number: {playerNumber}");
+                return;
+            }
+
+            Player player = players[playerNumber - 1];
+
+            // Check if the player already has this card
+            if (player.HasCard(card))
+            {
+                // Remove the card if it's already assigned
+                player.RemoveCard(card);
+                Debug.WriteLine($"Removed card {card.Name} from Player {playerNumber}");
+            }
+            else
+            {
+                // Add the card to the player
+                player.AddCard(card);
+                Debug.WriteLine($"Added card {card.Name} to Player {playerNumber}");
+
+                // Remove this card from other players (since it can only belong to one player)
+                foreach (var otherPlayer in players)
+                {
+                    if (otherPlayer.PlayerNumber != playerNumber && otherPlayer.HasCard(card))
+                    {
+                        otherPlayer.RemoveCard(card);
+                        Debug.WriteLine($"Removed card {card.Name} from Player {otherPlayer.PlayerNumber} (moved to Player {playerNumber})");
+                    }
+                }
+            }
+        }
+
+        // Add this event handler to Form1
+        private void SuggestionPanel_InitialCardAssigned(object sender, InitialCardEventArgs e)
+        {
+            Card card = new(e.CardName, GetCardTypeFromString(e.CardType));
+            ProcessInitialCardAssignment(e.PlayerNumber, card);
+        }
+
+        // Helper method to convert string to CardType
+        private static CardType GetCardTypeFromString(string typeString)
+        {
+            return typeString.ToLower() switch
+            {
+                "who" => CardType.Suspect,
+                "what" => CardType.Weapon,
+                "where" => CardType.Room,
+                _ => throw new ArgumentException($"Unknown card type: {typeString}"),
+            };
         }
 
         private void Form1_Resize(object sender, EventArgs e)
@@ -86,17 +140,11 @@ namespace Cluedo_Winform_HelperApp
             currentWeapon = new Card(e.What, CardType.Weapon);
             currentRoom = new Card(e.Where, CardType.Room);
 
-            // Start the response sequence
-            inResponseSequence = true;
-
             // Find the first player to respond (player to the right of current player)
             currentRespondingPlayerIndex = (currentPlayerIndex + 1) % players.Count;
 
             Debug.WriteLine($"Player {players[currentPlayerIndex].PlayerNumber} suggests: {e.Who}, {e.What}, {e.Where}");
             Debug.WriteLine($"Waiting for Player {players[currentRespondingPlayerIndex].PlayerNumber} to respond...");
-
-            // Update the UI to show we're waiting for a response
-            suggestionPanel.SetResponseMode(true);
         }
 
         private void SuggestionPanel_ResponseRecorded(object sender, ResponseEventArgs e)
@@ -115,15 +163,9 @@ namespace Cluedo_Winform_HelperApp
                     new Card(e.Where, CardType.Room)
                 );
 
-                // End the response sequence
-                inResponseSequence = false;
-
                 // Move to the next player's turn
                 currentPlayerIndex = (currentPlayerIndex + 1) % players.Count;
                 UpdateSuggestionPanelTitle();
-
-                // Reset the suggestion panel for the next turn
-                suggestionPanel.SetResponseMode(false);
                 suggestionPanel.ClearSelections();
             }
             else
@@ -144,14 +186,11 @@ namespace Cluedo_Winform_HelperApp
                 {
                     // End the response sequence if we've gone all the way around
                     Debug.WriteLine("No players have any of the suggested cards!");
-                    inResponseSequence = false;
 
                     // Move to the next player's turn
                     currentPlayerIndex = (currentPlayerIndex + 1) % players.Count;
                     UpdateSuggestionPanelTitle();
-
-                    // Reset the suggestion panel for the next turn
-                    suggestionPanel.SetResponseMode(false);
+                    suggestionPanel.ButtonEnablingByMode(false);
                     suggestionPanel.ClearSelections();
                 }
                 else
@@ -163,7 +202,7 @@ namespace Cluedo_Winform_HelperApp
         }
 
 
-        // Your existing InitializeComponent method will be here, typically auto-generated by the designer
+        // Custom InitializeComponent method
         private void CustomInitializeComponent()
         {
             SuspendLayout();

@@ -1,4 +1,4 @@
-﻿using Cluedo_Winform_HelperApp.SuggestionInput;
+﻿using System.Diagnostics;
 
 namespace Cluedo_Winform_HelperApp.SuggestionInput
 {
@@ -19,12 +19,19 @@ namespace Cluedo_Winform_HelperApp.SuggestionInput
         private Button noResponseButton;
         private Button yesResponseButton;
 
+        // Initial
+        private ComboBox playerComboBox;
+        private Button initialButton;
+        private bool initialMode = false;
+
         // Title label
         private Label titleLabel;
+        private bool inResponseMode = false;
 
         // Events
         public event EventHandler<SuggestionEventArgs> SuggestionMade;
         public event EventHandler<ResponseEventArgs> ResponseRecorded;
+        public event EventHandler<InitialCardEventArgs> InitialCardAssigned;
 
         // Constructor
         public SuggestionInputPanel()
@@ -70,6 +77,9 @@ namespace Cluedo_Winform_HelperApp.SuggestionInput
 
             // Action buttons section
             yPos = CreateActionButtonsSection(yPos);
+
+            // Initial section
+            yPos = CreateInitialSection(yPos);
         }
 
         public void UpdateTitle(string title)
@@ -124,6 +134,72 @@ namespace Cluedo_Winform_HelperApp.SuggestionInput
                 groupBox.Controls.Add(button);
                 buttonList.Add(button);
             }
+
+            return yPosition + groupBox.Height + 20;
+        }
+
+        private int CreateInitialSection(int yPosition)
+        {
+            // Add section title
+            Label sectionLabel = new()
+            {
+                Text = "🎲 Initial Cards",
+                Font = new Font("Arial", 11, FontStyle.Bold),
+                Location = new Point(20, yPosition),
+                AutoSize = true
+            };
+            Controls.Add(sectionLabel);
+            yPosition += 30;
+
+            // Create group box for controls
+            GroupBox groupBox = new()
+            {
+                Location = new Point(20, yPosition),
+                Size = new Size(560, 50),
+                Text = ""
+            };
+            Controls.Add(groupBox);
+
+            // Create player selection combo box
+            Label playerLabel = new()
+            {
+                Text = "Player:",
+                Location = new Point(10, 20),
+                AutoSize = true
+            };
+            groupBox.Controls.Add(playerLabel);
+
+            playerComboBox = new ComboBox
+            {
+                Location = new Point(60, 17),
+                Size = new Size(80, 25),
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+
+            // Add player numbers to combo box
+            for (int i = 1; i <= 6; i++)
+            {
+                playerComboBox.Items.Add(i);
+            }
+
+            // Set default selection
+            if (playerComboBox.Items.Count > 0)
+            {
+                playerComboBox.SelectedIndex = 0;
+            }
+
+            groupBox.Controls.Add(playerComboBox);
+
+            // Create initial button
+            initialButton = new Button
+            {
+                Text = "Initial Mode",
+                Size = new Size(160, 30),
+                Location = new Point(180, 15),
+                FlatStyle = FlatStyle.Flat
+            };
+            initialButton.Click += InitialButton_Click;
+            groupBox.Controls.Add(initialButton);
 
             return yPosition + groupBox.Height + 20;
         }
@@ -189,28 +265,51 @@ namespace Cluedo_Winform_HelperApp.SuggestionInput
             Button button = (Button)sender;
             ButtonType type = (ButtonType)button.Tag;
 
-            // Reset selection in the same category
-            switch (type)
+            if (initialMode)
             {
-                case ButtonType.Who:
-                    ResetButtonsInCategory(whoButtons);
-                    selectedWho = button;
-                    break;
-                case ButtonType.What:
-                    ResetButtonsInCategory(whatButtons);
-                    selectedWhat = button;
-                    break;
-                case ButtonType.Where:
-                    ResetButtonsInCategory(whereButtons);
-                    selectedWhere = button;
-                    break;
+                // In Initial mode, clicking a card marks it as belonging to the selected player
+                if (playerComboBox.SelectedItem != null)
+                {
+                    int playerNumber = (int)playerComboBox.SelectedItem;
+                    string cardName = button.Text;
+                    string cardType = type.ToString();
+
+                    Debug.WriteLine($"Player {playerNumber} certainly has {cardName} ({cardType})");
+
+                    // Disable initialMode immediately
+                    initialMode = false;
+                    initialButton.BackColor = SystemColors.Control;
+                    ClearSelections();
+
+                }
             }
+            else
+            {
+                // Normal suggestion mode behavior
+                // Reset selection in the same category
+                switch (type)
+                {
+                    case ButtonType.Who:
+                        ResetButtonsInCategory(whoButtons);
+                        selectedWho = button;
+                        break;
+                    case ButtonType.What:
+                        ResetButtonsInCategory(whatButtons);
+                        selectedWhat = button;
+                        break;
+                    case ButtonType.Where:
+                        ResetButtonsInCategory(whereButtons);
+                        selectedWhere = button;
+                        break;
+                }
 
-            // Highlight the selected button
-            button.BackColor = Color.LightGreen;
+                // Highlight the selected button
+                button.BackColor = Color.LightGreen;
 
-            // Enable the suggest button if all required selections are made
-            suggestButton.Enabled = (selectedWho != null && selectedWhat != null && selectedWhere != null);
+                // Enable the suggest button if all required selections are made
+                suggestButton.Enabled = (selectedWho != null && selectedWhat != null && selectedWhere != null);
+            }
+            ButtonEnablingByMode(inResponseMode);
         }
 
         private void ResetButtonsInCategory(List<Button> buttons)
@@ -233,6 +332,7 @@ namespace Cluedo_Winform_HelperApp.SuggestionInput
                 );
                 SuggestionMade?.Invoke(this, args);
             }
+            ButtonEnablingByMode(true);
         }
 
         private void NoResponseButton_Click(object sender, EventArgs e)
@@ -263,23 +363,60 @@ namespace Cluedo_Winform_HelperApp.SuggestionInput
                 );
                 ResponseRecorded?.Invoke(this, args);
             }
+            ButtonEnablingByMode(false);
         }
 
-        // New method to enable/disable appropriate buttons for response mode
-        public void SetResponseMode(bool inResponseMode)
+        private void InitialButton_Click(object sender, EventArgs e)
         {
-            suggestButton.Enabled = !inResponseMode;
-            noResponseButton.Enabled = inResponseMode;
-            yesResponseButton.Enabled = inResponseMode;
+            initialMode = !initialMode;
+
+            if (initialMode)
+            {
+                ClearSelections();
+                initialButton.BackColor = Color.Red;
+            }
+            else
+            {
+                initialButton.BackColor = SystemColors.Control;
+            }
+            ButtonEnablingByMode(inResponseMode);
         }
 
-        // New method to clear selections and reset all buttons
+        // Enable/disable appropriate buttons for modes
+        public void ButtonEnablingByMode(bool inResponseMode)
+        {
+            this.inResponseMode = inResponseMode;
+            if (initialMode)
+            {
+                // In Initial mode: only Initial button is enabled
+                initialButton.Enabled = true;
+                suggestButton.Enabled = false;
+                yesResponseButton.Enabled = false;
+                noResponseButton.Enabled = false;
+            }
+            else if (inResponseMode)
+            {
+                // In Response mode: only Yes/No buttons are enabled
+                initialButton.Enabled = false;
+                suggestButton.Enabled = false;
+                yesResponseButton.Enabled = true;
+                noResponseButton.Enabled = true;
+            }
+            else
+            {
+                // Normal mode: Initial and Suggest are enabled (if selections complete)
+                initialButton.Enabled = true;
+                suggestButton.Enabled = (selectedWho != null && selectedWhat != null && selectedWhere != null);
+                yesResponseButton.Enabled = false;
+                noResponseButton.Enabled = false;
+            }
+        }
+
+        // Clear selections after each suggestion/response sequence
         public void ClearSelections()
         {
-            // Reset all buttons
-            ResetButtonsInCategory(whoButtons);
-            ResetButtonsInCategory(whatButtons);
-            ResetButtonsInCategory(whereButtons);
+            // Reset all card buttons
+            ResetAllCardButtons();
 
             // Clear selections
             selectedWho = null;
@@ -290,6 +427,15 @@ namespace Cluedo_Winform_HelperApp.SuggestionInput
             suggestButton.Enabled = false;
             noResponseButton.Enabled = false;
             yesResponseButton.Enabled = false;
+
+        }
+
+        // Reset all card buttons
+        public void ResetAllCardButtons()
+        {
+            ResetButtonsInCategory(whatButtons);
+            ResetButtonsInCategory(whoButtons);
+            ResetButtonsInCategory(whereButtons);
         }
     }
 }
