@@ -1,17 +1,14 @@
-using Cluedo_Winform_HelperApp.SuggestionInput;
+﻿using Cluedo_Winform_HelperApp.SuggestionInput;
 using Cluedo_Winform_HelperApp.Entity;
-using Cluedo_Winform_HelperApp.SuggestionInput;
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
-using System.Windows.Forms;
+using Cluedo_Winform_HelperApp.SheetNote;
 
 namespace Cluedo_Winform_HelperApp
 {
     public partial class Form1 : Form
     {
         private SuggestionInputPanel suggestionPanel;
+        private SheetNotePanel sheetNotePanel;
         private List<Player> players;
         private int currentPlayerIndex = 0;
         private int currentRespondingPlayerIndex = 0;
@@ -28,6 +25,7 @@ namespace Cluedo_Winform_HelperApp
 
             InitializePlayers();
             InitializeSuggestionPanel();
+            InitializeSheetNotePanel();
         }
 
         private void InitializePlayers()
@@ -65,6 +63,22 @@ namespace Cluedo_Winform_HelperApp
             UpdateSuggestionPanelTitle();
         }
 
+        private void InitializeSheetNotePanel()
+        {
+            // Create the sheet note panel
+            sheetNotePanel = new SheetNotePanel
+            {
+                Dock = DockStyle.Right,
+                Width = ClientSize.Width / 2
+            };
+
+            // Add the panel to the form
+            Controls.Add(sheetNotePanel);
+
+            // Handle form resize to keep the panel at half width
+            Resize += Form1_Resize;
+        }
+
         private void UpdateSuggestionPanelTitle()
         {
             suggestionPanel?.UpdateTitle($"Player {players[currentPlayerIndex].PlayerNumber}'s Turn");
@@ -83,26 +97,27 @@ namespace Cluedo_Winform_HelperApp
             // Check if the player already has this card
             if (player.HasCard(card))
             {
-                // Remove the card if it's already assigned
                 player.RemoveCard(card);
                 Debug.WriteLine($"Removed card {card.Name} from Player {playerNumber}");
             }
             else
             {
-                // Add the card to the player
                 player.AddCard(card);
                 Debug.WriteLine($"Added card {card.Name} to Player {playerNumber}");
 
-                // Remove this card from other players (since it can only belong to one player)
+                // Remove this card from other players
                 foreach (var otherPlayer in players)
                 {
                     if (otherPlayer.PlayerNumber != playerNumber && otherPlayer.HasCard(card))
                     {
                         otherPlayer.RemoveCard(card);
-                        Debug.WriteLine($"Removed card {card.Name} from Player {otherPlayer.PlayerNumber} (moved to Player {playerNumber})");
+                        Debug.WriteLine($"Removed card {card.Name} from Player {otherPlayer.PlayerNumber}");
                     }
                 }
             }
+
+            // Update the SheetNotePanel with the player's card count
+            sheetNotePanel.UpdatePlayerCards(playerNumber - 1, player.Cards.Count);
         }
 
         // Add this event handler to Form1
@@ -126,25 +141,31 @@ namespace Cluedo_Winform_HelperApp
 
         private void Form1_Resize(object sender, EventArgs e)
         {
-            // Keep the suggestion panel at exactly half the form width when resizing
             if (suggestionPanel != null)
             {
                 suggestionPanel.Width = ClientSize.Width / 2;
+            }
+            if (sheetNotePanel != null)
+            {
+                sheetNotePanel.Width = ClientSize.Width / 2;
             }
         }
 
         private void SuggestionPanel_SuggestionMade(object sender, SuggestionEventArgs e)
         {
-            // Store the current suggestion
             currentSuspect = new Card(e.Who, CardType.Suspect);
             currentWeapon = new Card(e.What, CardType.Weapon);
             currentRoom = new Card(e.Where, CardType.Room);
 
-            // Find the first player to respond (player to the right of current player)
             currentRespondingPlayerIndex = (currentPlayerIndex + 1) % players.Count;
 
             Debug.WriteLine($"Player {players[currentPlayerIndex].PlayerNumber} suggests: {e.Who}, {e.What}, {e.Where}");
             Debug.WriteLine($"Waiting for Player {players[currentRespondingPlayerIndex].PlayerNumber} to respond...");
+
+            // Update the SheetNotePanel to highlight the suggestion
+            sheetNotePanel.UpdateCategory("WHO", e.Who, currentPlayerIndex, "⬜");
+            sheetNotePanel.UpdateCategory("WHAT", e.What, currentPlayerIndex, "⬜");
+            sheetNotePanel.UpdateCategory("WHERE", e.Where, currentPlayerIndex, "⬜");
         }
 
         private void SuggestionPanel_ResponseRecorded(object sender, ResponseEventArgs e)
@@ -153,41 +174,42 @@ namespace Cluedo_Winform_HelperApp
 
             if (e.HasResponse)
             {
-                // Player has at least one of the suggested cards
                 Debug.WriteLine($"Player {respondingPlayer.PlayerNumber} holds at least one of the cards: {e.Who}, {e.What}, {e.Where}");
 
-                // Record the possible card set for this player
                 respondingPlayer.AddPossibleCardSet(
                     new Card(e.Who, CardType.Suspect),
                     new Card(e.What, CardType.Weapon),
                     new Card(e.Where, CardType.Room)
                 );
 
-                // Move to the next player's turn
+                // Update the SheetNotePanel to mark the response
+                sheetNotePanel.UpdateCategory("WHO", e.Who, currentRespondingPlayerIndex, "✅");
+                sheetNotePanel.UpdateCategory("WHAT", e.What, currentRespondingPlayerIndex, "✅");
+                sheetNotePanel.UpdateCategory("WHERE", e.Where, currentRespondingPlayerIndex, "✅");
+
                 currentPlayerIndex = (currentPlayerIndex + 1) % players.Count;
                 UpdateSuggestionPanelTitle();
                 suggestionPanel.ClearSelections();
             }
             else
             {
-                // Player does not have any of the suggested cards
                 Debug.WriteLine($"Player {respondingPlayer.PlayerNumber} does NOT have the cards: {currentSuspect.Name}, {currentWeapon.Name}, {currentRoom.Name}");
 
-                // Record that this player doesn't have these cards
                 respondingPlayer.AddExcludedCard(currentSuspect);
                 respondingPlayer.AddExcludedCard(currentWeapon);
                 respondingPlayer.AddExcludedCard(currentRoom);
 
-                // Move to the next responding player
+                // Update the SheetNotePanel to mark the exclusion
+                sheetNotePanel.UpdateCategory("WHO", currentSuspect.Name, currentRespondingPlayerIndex, "❌");
+                sheetNotePanel.UpdateCategory("WHAT", currentWeapon.Name, currentRespondingPlayerIndex, "❌");
+                sheetNotePanel.UpdateCategory("WHERE", currentRoom.Name, currentRespondingPlayerIndex, "❌");
+
                 currentRespondingPlayerIndex = (currentRespondingPlayerIndex + 1) % players.Count;
 
-                // Check if we've gone all the way around to the player who made the suggestion
                 if (currentRespondingPlayerIndex == currentPlayerIndex)
                 {
-                    // End the response sequence if we've gone all the way around
                     Debug.WriteLine("No players have any of the suggested cards!");
 
-                    // Move to the next player's turn
                     currentPlayerIndex = (currentPlayerIndex + 1) % players.Count;
                     UpdateSuggestionPanelTitle();
                     suggestionPanel.ButtonEnablingByMode(false);
@@ -195,7 +217,6 @@ namespace Cluedo_Winform_HelperApp
                 }
                 else
                 {
-                    // Continue waiting for the next player to respond
                     Debug.WriteLine($"Waiting for Player {players[currentRespondingPlayerIndex].PlayerNumber} to respond...");
                 }
             }
